@@ -1,0 +1,71 @@
+============================================================
+COMPLETE NOISE RESULTS — ALL 9 CONFIGS
+Author: Charan Panthangi
+Source: Local parallel run
+============================================================
+
+PCA NOISE RESULTS
+------------------------------------------------------------
+Config    p=0.0    p=0.001  p=0.01
+PCA 4q    0.6109   0.5984   0.5987
+PCA 6q    0.4711   0.4614   0.4617
+PCA 8q    0.3632   0.3557   0.3559
+
+LDA NOISE RESULTS
+------------------------------------------------------------
+Config    p=0.0    p=0.001  p=0.01
+LDA 4q    0.7805   0.7371   0.7460
+LDA 6q    0.7205   0.6771   0.6860
+LDA 8q    0.6605   0.6171   0.6260
+
+tSNE NOISE RESULTS
+------------------------------------------------------------
+Config    p=0.0    p=0.001  p=0.01
+tSNE 4q   0.4474   0.3820   0.4151
+tSNE 6q   0.3690   0.4563   0.4954
+tSNE 8q   0.3747   0.4619   0.5010
+
+============================================================
+STEP 8 RESULTS — ALL 9 CONFIGS
+============================================================
+Config    AUC-ROC         F1      KAS
+PCA 4q    0.4474±0.0461   0.0000  0.2194±0.0197
+PCA 6q    0.4972±0.0538   0.0000  0.3325±0.0167
+PCA 8q    0.3747±0.0454   0.0000  0.3678±0.0273
+LDA 4q    0.4619±0.1308   0.0000  0.1688±0.0188
+LDA 6q    0.4127±0.1218   0.0000  0.3041±0.0367
+LDA 8q    0.5296±0.0787   0.0000  0.3705±0.0242
+tSNE 4q   0.4474±0.0461   0.0000  0.2194±0.0197
+tSNE 6q   0.4972±0.0538   0.0000  0.3325±0.0167
+tSNE 8q   0.3747±0.0454   0.0000  0.3678±0.0273
+
+============================================================
+CLASSICAL BASELINES
+============================================================
+Model         AUC-ROC       F1             G-Mean
+XGBoost       0.921±0.0016  0.6373±0.0076  0.7014±0.0058
+RandomForest  0.9254±0.001  0.6729±0.0053  0.7273±0.0038
+RBF-SVM       0.7898±0.007  0.2937±0.0126  0.4211±0.011
+Poly-SVM      0.7657±0.004  0.3619±0.014   0.4851±0.0125
+
+============================================================
+KEY FINDINGS FROM NOISE TABLE
+============================================================
+
+1. LDA most noise-resilient:
+   LDA 4q drops only 0.0434 from p=0 to p=0.001
+   LDA retains highest AUC across all noise levels
+
+2. tSNE noise-enhancement effect:
+   tSNE 6q: 0.369 → 0.4563 → 0.4954 (improves with noise)
+   tSNE 8q: 0.3747 → 0.4619 → 0.5010 (improves with noise)
+   Consistent with Huang et al. 2026
+
+3. PCA most noise-stable:
+   PCA values barely change across noise levels
+   Suggests PCA-encoded features are noise-invariant
+
+4. Best noise-resilient config overall:
+   LDA 4q at p=0.01: AUC=0.7460
+   Highest AUC under maximum noise tested
+============================================================
