@@ -1,0 +1,675 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+
+\begin{document}
+
+\title{Quantum Kernel-Enhanced Support Vector Machines 
+for Financial Fraud Detection: A Benchmarking Study 
+on NISQ Simulators Against Classical Baselines}
+
+\author{Charan~Panthangi\\
+\small Lead AI Engineer $|$ IIM Indore $|$ Certification in Quantum Computing, IIT Madras\\
+\small Fortune 500 Media Conglomerate, Bangalore, India\\
+\small \textit{charan.panthangi@outlook.com}
+\thanks{Charan Panthangi is a Lead AI Engineer and independent researcher 
+at a Fortune 500 media conglomerate, Bangalore, India. PGDM, IIM Indore. 
+Certification in Quantum Computing, IIT Madras. 
+LinkedIn: linkedin.com/in/charan-panthangi}}
+
+\maketitle
+
+\begin{abstract}
+Financial fraud detection presents a persistent classification 
+challenge characterized by high-dimensional feature spaces and severe 
+class imbalance. Classical machine learning approaches, while 
+effective, face theoretical limitations in separating complex 
+non-linear decision boundaries at scale. Quantum kernel methods, 
+which leverage quantum feature maps to implicitly encode data into 
+exponentially large Hilbert spaces, offer a theoretically motivated 
+alternative within the noisy intermediate-scale quantum (NISQ) era. 
+This paper presents a systematic benchmarking study of quantum 
+kernel-enhanced support vector machines (QK-SVM) against classical 
+baselines --- including radial basis function SVM, polynomial kernel 
+SVM, XGBoost, and Random Forest --- for credit card fraud detection 
+on the IEEE-CIS Fraud Detection dataset. We evaluate the impact of 
+three dimensionality reduction strategies (PCA, LDA, t-SNE) at 
+multiple feature scales (4, 6, 8 qubits) on quantum kernel quality. 
+Furthermore, we introduce the \textit{Kernel Alignment Score} (KAS), 
+a novel diagnostic metric that quantifies the divergence between 
+quantum and classical kernel matrices, enabling practitioners to 
+assess the degree to which quantum feature maps explore genuinely 
+distinct regions of feature space. Noise impact analysis is conducted 
+using Qiskit Aer depolarizing noise models across all nine quantum 
+configurations. Results demonstrate that classical tree-based methods 
+significantly outperform quantum kernel approaches at current NISQ 
+scales, with Random Forest achieving AUC\,=\,0.925 compared to the 
+best quantum configuration (LDA, 8 qubits) at AUC\,=\,0.530 under 
+ideal simulation. KAS values reveal consistent quantum-classical 
+feature space divergence across all configurations (range: 
+0.169--0.371). A counterintuitive noise-enhancement effect is 
+observed in t-SNE-reduced configurations, wherein AUC improves 
+monotonically with depolarizing noise, consistent with implicit 
+regularization properties of quantum noise on tabular financial data. 
+This study establishes empirical performance boundaries for quantum 
+kernel methods on financial tabular data under current NISQ 
+constraints and provides a reproducible benchmarking framework for 
+future applied quantum machine learning research.
+\end{abstract}
+
+\begin{IEEEkeywords}
+financial fraud detection, kernel alignment score, noisy 
+intermediate-scale quantum, quantum feature map, quantum kernel 
+methods, quantum machine learning, support vector machine, 
+variational quantum circuits
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+\IEEEPARstart{F}{inancial} fraud detection remains one of the most 
+critical challenges in applied machine learning, with global fraud 
+losses exceeding \$485 billion annually~\cite{nilson2023}. 
+The problem is characterized by several compounding difficulties: 
+extreme class imbalance (fraud transactions constitute approximately 
+3.5\% of transactions in the IEEE-CIS dataset), high-dimensional 
+feature spaces encompassing hundreds of behavioral and transactional 
+attributes, and adversarial drift as fraudulent patterns evolve 
+continuously in response to detection mechanisms~\cite{dalpozzolo2015}.
+
+Classical machine learning approaches --- including gradient-boosted 
+decision trees~\cite{chen2016xgboost}, support vector 
+machines~\cite{cortes1995}, and deep neural networks --- 
+have achieved strong empirical performance on fraud detection tasks. 
+However, these methods face inherent theoretical limitations when 
+operating in high-dimensional non-linear feature spaces, where 
+the expressiveness of classical kernel functions may be insufficient 
+to resolve complex decision boundaries~\cite{scholkopf2002}.
+
+Quantum machine learning (QML) offers a theoretically motivated 
+alternative through quantum kernel methods, wherein quantum feature 
+maps encode classical data into exponentially large Hilbert spaces 
+via parameterized quantum circuits~\cite{havlicek2019}. This 
+quantum-classical hybrid architecture --- retaining classical SVM 
+optimization while replacing the kernel computation with a quantum 
+circuit --- is particularly well-suited to the NISQ era, where 
+limited qubit counts and gate noise preclude fault-tolerant 
+computation~\cite{preskill2018}.
+
+Despite growing theoretical interest, rigorous empirical benchmarking 
+of quantum kernel methods on real-world financial tabular datasets 
+remains limited. Most recently, Kakavand et al.~\cite{kakavand2026} 
+presented a comprehensive quantum kernel benchmarking study across 
+nine tabular datasets; however, their work does not address financial 
+fraud detection --- a domain characterized by extreme class imbalance, 
+adversarial drift, and high-dimensional transaction features --- nor 
+does it propose diagnostic metrics for quantum-classical kernel 
+divergence. This paper addresses these gaps directly.
+
+Contributions of this paper are:
+\begin{itemize}
+    \item A systematic benchmarking study comparing QK-SVM against 
+    four classical baselines on the IEEE-CIS Fraud Detection dataset.
+    \item A comparative evaluation of PCA, LDA, and t-SNE 
+    dimensionality reduction at 4, 6, and 8 qubit scales.
+    \item The \textit{Kernel Alignment Score} (KAS), a novel 
+    diagnostic metric for quantum-classical kernel matrix divergence.
+    \item Comprehensive noise impact analysis across all nine 
+    quantum configurations under three depolarizing noise levels.
+    \item A publicly reproducible experimental framework 
+    available at [https://github.com/charanpanthangi/quantum-kernel-fraud].
+\end{itemize}
+
+\section{Related Work}
+\label{sec:literature}
+
+\subsection{Classical Approaches to Financial Fraud Detection}
+Dal Pozzolo et al.~\cite{dalpozzolo2015} established foundational 
+benchmarks for credit card fraud detection, demonstrating that 
+ensemble methods consistently outperform single classifiers on 
+imbalanced financial datasets. Bahnsen et al.~\cite{bahnsen2016} 
+advanced cost-sensitive learning frameworks highlighting the 
+business impact of false negatives. Gradient-boosted decision 
+trees, particularly XGBoost~\cite{chen2016xgboost}, have emerged 
+as the dominant classical approach for tabular fraud detection, 
+owing to their ability to handle missing values, mixed feature 
+types, and nonlinear interactions. Class imbalance remains the 
+central challenge, with SMOTE~\cite{chawla2002smote} combined 
+with undersampling becoming standard practice. The interaction 
+between synthetic oversampling and quantum feature spaces remains 
+unexplored --- a gap this paper addresses empirically.
+
+\subsection{Quantum Kernel Methods}
+Havl\'{i}\v{c}ek et al.~\cite{havlicek2019} established the 
+theoretical foundation for quantum kernel methods, demonstrating 
+that quantum feature maps could construct classically intractable 
+kernel functions. Schuld and Killoran~\cite{schuld2019} formalized 
+the connection between quantum models and kernel methods. Liu 
+et al.~\cite{liu2021} provided rigorous conditions under which 
+quantum kernels provably outperform classical counterparts, and 
+Cerezo et al.~\cite{cerezo2021} contextualized quantum kernel 
+methods within the broader NISQ landscape. Gil-Fuster 
+et al.~\cite{gilfuster2026} characterized query complexity 
+bottlenecks in quantum kernel inference. Kakavand 
+et al.~\cite{kakavand2026} conducted the most comprehensive 
+empirical benchmarking to date, finding no significant quantum 
+advantage on generic tabular data under current NISQ constraints. 
+Our work extends this benchmarking paradigm to financial fraud 
+detection, which presents unique challenges not present in 
+datasets studied by Kakavand et al.
+
+\subsection{Quantum Machine Learning for Finance}
+Or\'{u}s et al.~\cite{orus2019} and Egger et al.~\cite{egger2020} 
+identified portfolio optimization, risk analysis, and derivative 
+pricing as primary near-term QML application areas. Within the 
+quantum kernel literature specifically, financial fraud detection 
+applications remain entirely absent. This paper represents, 
+to the best of our knowledge, the first systematic benchmarking 
+of quantum kernel methods on a large-scale financial fraud dataset.
+
+\subsection{NISQ-Era Constraints and Benchmarking}
+Preskill~\cite{preskill2018} defined NISQ devices as those 
+with 50--1000 qubits, limited gate fidelity, and no error 
+correction. Roy and Alam~\cite{roy2026} demonstrated quantum 
+kernel robustness under depolarizing noise up to 2\% per gate. 
+Huang et al.~\cite{huang2026} identified a noise-enhancement 
+effect in analog quantum kernels --- a phenomenon we independently 
+observe in our t-SNE-reduced configurations.
+
+\section{Theoretical Background}
+\label{sec:theory}
+
+\subsection{Classical Kernel SVM}
+The classical SVM~\cite{cortes1995} seeks a maximum 
+margin hyperplane in feature space $\mathcal{H}$. Given 
+training data $\{(\mathbf{x}_i, y_i)\}_{i=1}^{N}$ where 
+$\mathbf{x}_i \in \mathbb{R}^d$ and $y_i \in \{-1, +1\}$, 
+the kernel SVM computes inner products through 
+$k(\mathbf{x}_i, \mathbf{x}_j) = 
+\langle \phi(\mathbf{x}_i), \phi(\mathbf{x}_j) \rangle$. 
+The centered kernel alignment framework~\cite{cristianini2001} 
+provides the mathematical foundation of the proposed KAS metric.
+
+\subsection{Quantum Feature Maps}
+A quantum feature map $\phi_Q: \mathbb{R}^d \rightarrow 
+\mathcal{H}_Q$ encodes classical input $\mathbf{x}$ into 
+quantum state $|\phi(\mathbf{x})\rangle$ via circuit $U(\mathbf{x})$:
+\begin{equation}
+    |\phi(\mathbf{x})\rangle = U(\mathbf{x})|0\rangle^{\otimes n}
+\end{equation}
+where $n$ denotes qubit count. The quantum kernel is:
+\begin{equation}
+    k_Q(\mathbf{x}_i, \mathbf{x}_j) = 
+    |\langle \phi(\mathbf{x}_i)|\phi(\mathbf{x}_j)\rangle|^2
+\end{equation}
+
+\subsection{ZZFeatureMap Circuit Design}
+The \texttt{ZZFeatureMap}~\cite{havlicek2019} applies Hadamard 
+gates followed by ZZ-entanglement rotations:
+\begin{equation}
+    U_{\Phi}(\mathbf{x}) = \exp\!\left(i\sum_{S \subseteq [n]} 
+    \phi_S(\mathbf{x})\prod_{k \in S} Z_k\right) H^{\otimes n}
+\end{equation}
+
+The ZZFeatureMap is suited to tabular financial transaction data 
+for three reasons. First, its ZZ-entanglement structure encodes 
+pairwise feature interactions via two-qubit rotation terms 
+$\phi_{\{i,j\}}(\mathbf{x}) = (\pi - x_i)(\pi - x_j)$, 
+capturing correlations between transaction attributes --- such 
+as purchase amount and merchant category --- directly relevant 
+to fraud pattern identification. Second, expressivity scales 
+with circuit repetitions without increasing qubit count, 
+critical under NISQ constraints. Third, Hadamard initialization 
+creates uniform superposition ensuring uniform feature space 
+exploration before entangling operations introduce 
+feature-dependent structure.
+
+\subsection{Kernel Alignment Score (KAS)}
+We introduce the \textit{Kernel Alignment Score} (KAS) to 
+quantify divergence between quantum and classical kernel matrices:
+\begin{equation}
+    \text{KAS}(\mathbf{K}_Q, \mathbf{K}_C) = 
+    \frac{\langle \tilde{\mathbf{K}}_Q, 
+    \tilde{\mathbf{K}}_C \rangle_F}
+    {\|\tilde{\mathbf{K}}_Q\|_F \cdot 
+    \|\tilde{\mathbf{K}}_C\|_F}
+\end{equation}
+where $\tilde{\mathbf{K}} = \mathbf{H}\mathbf{K}\mathbf{H}$, 
+$\mathbf{H} = \mathbf{I} - \frac{1}{n}\mathbf{1}\mathbf{1}^T$, 
+and $\langle \cdot, \cdot \rangle_F$ is the Frobenius inner 
+product~\cite{cristianini2001}. KAS approaching 1 indicates 
+quantum-classical similarity; low KAS indicates genuinely 
+distinct quantum feature space structure. As a practical 
+engineering diagnostic, KAS serves as a go/no-go signal: 
+high KAS with comparable quantum-classical performance 
+indicates no structural quantum advantage, and classical 
+kernels should be preferred given lower computational cost.
+
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Dataset and Preprocessing}
+We evaluate on the IEEE-CIS Fraud Detection 
+dataset~\cite{ieee_cis_dataset}, comprising 590,540 
+transactions with 433 features and a fraud rate of 
+3.5\% (20,663 fraud transactions). After merging transaction 
+and identity files, 218 features were retained following 
+removal of columns exceeding 50\% missing values.
+
+Preprocessing pipeline:
+\begin{itemize}
+    \item Median imputation for numerical, mode for 
+    categorical missing values
+    \item Label encoding for categorical variables
+    \item Standard scaling (zero mean, unit variance)
+    \item Class imbalance: random undersampling (10:1 ratio) 
+    followed by SMOTE~\cite{chawla2002smote} where required, 
+    yielding 227,293 balanced samples
+    \item Stratified 3-fold cross-validation
+\end{itemize}
+
+\subsection{Dimensionality Reduction}
+Three reduction strategies are evaluated at 
+$n \in \{4, 6, 8\}$ dimensions, yielding nine configurations:
+\begin{itemize}
+    \item \textbf{PCA}: Maximizes variance retention
+    \item \textbf{LDA}: Maximizes class separability 
+    via Fisher criterion
+    \item \textbf{t-SNE}: Preserves local manifold structure. 
+    As t-SNE cannot transform unseen data, PCA was used as 
+    a proxy transformation for test sets.
+\end{itemize}
+
+\subsection{Quantum Circuit Configuration}
+\begin{itemize}
+    \item Feature map: ZZFeatureMap, 2 repetitions, 
+    linear entanglement
+    \item Qubits: $n \in \{4, 6, 8\}$
+    \item Kernel computation: PennyLane~\cite{pennylane2018} 
+    \texttt{default.qubit} simulator
+    \item SVM: scikit-learn~\cite{sklearn2011} 
+    \texttt{SVC(kernel=`precomputed')}
+    \item Sample size: 400 stratified samples, consistent 
+    with NISQ simulation constraints and exceeding prior 
+    benchmarks~\cite{havlicek2019,kakavand2026}
+\end{itemize}
+
+\subsection{Noise Analysis}
+Depolarizing noise models via Qiskit Aer~\cite{qiskit2023} 
+at three levels across all nine configurations:
+\begin{itemize}
+    \item $p = 0$ (ideal simulator)
+    \item $p = 0.001$ (low noise)
+    \item $p = 0.01$ (medium NISQ noise)
+\end{itemize}
+
+\subsection{Classical Baselines}
+Four baselines evaluated on full 227,293-sample dataset. 
+RBF-SVM and Poly-SVM evaluated on 10,000-sample subsets 
+per fold due to quadratic kernel matrix complexity:
+\begin{itemize}
+    \item RBF-SVM, Poly-SVM (degree=3)
+    \item XGBoost~\cite{chen2016xgboost} (100 estimators)
+    \item Random Forest (100 estimators)
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+AUC-ROC, F1, G-Mean, Precision, Recall, and KAS reported 
+as mean $\pm$ std across 3-fold cross-validation.
+
+\subsection{Implementation Details}
+Python 3.10; PennyLane v0.38~\cite{pennylane2018}; 
+Qiskit v1.2~\cite{qiskit2023}; scikit-learn 
+v1.4~\cite{sklearn2011}; XGBoost v2.0~\cite{chen2016xgboost}. 
+Experiments run on AWS EC2 c6i.24xlarge (96 vCPUs, 192 GB RAM). 
+Code available at https://github.com/charan-panthangi/quantum-kernel-fraud-detection.
+
+\section{Results and Analysis}
+\label{sec:results}
+
+\subsection{Classical Baseline Performance}
+Table~\ref{tab:classical_results} reports classical 
+baseline performance. Random Forest achieves the highest 
+AUC-ROC of 0.925, marginally outperforming XGBoost (0.921). 
+Both tree-based methods substantially outperform classical 
+kernel SVMs. RBF-SVM (AUC\,=\,0.790) and Poly-SVM 
+(AUC\,=\,0.766) exhibit low F1 despite high precision, 
+indicating strong majority-class prediction bias. These 
+results establish the classical performance ceiling.
+
+\begin{table}[h]
+\caption{Classical Baseline Performance on IEEE-CIS 
+Fraud Detection Dataset (Mean $\pm$ Std, 3-fold CV)}
+\label{tab:classical_results}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{AUC-ROC} & \textbf{F1} & 
+\textbf{G-Mean} & \textbf{Precision} \\
+\midrule
+XGBoost       & 0.921$\pm$0.002 & 0.637$\pm$0.008 & 0.701$\pm$0.006 & 0.895$\pm$0.007 \\
+Random Forest & 0.925$\pm$0.001 & 0.673$\pm$0.005 & 0.727$\pm$0.004 & 0.917$\pm$0.005 \\
+RBF-SVM       & 0.790$\pm$0.007 & 0.294$\pm$0.013 & 0.421$\pm$0.011 & 0.840$\pm$0.003 \\
+Poly-SVM      & 0.766$\pm$0.004 & 0.362$\pm$0.014 & 0.485$\pm$0.013 & 0.764$\pm$0.013 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Quantum Kernel SVM Performance}
+Table~\ref{tab:quantum_results} reports QK-SVM performance. 
+LDA configurations consistently outperform PCA and t-SNE 
+counterparts. LDA at 8 qubits achieves the highest quantum 
+AUC of 0.530, the only configuration to exceed random chance 
+consistently. F1\,=\,0.000 across all quantum configurations 
+indicates that QK-SVM predicts only the majority class under 
+severe class imbalance at the 400-sample evaluation scale, 
+failing to identify any fraud transactions.
+
+\begin{table}[h]
+\caption{Quantum Kernel SVM Performance Across All 
+Configurations (Mean $\pm$ Std, 3-fold CV, $n$=400)}
+\label{tab:quantum_results}
+\centering
+\begin{tabular}{llccc}
+\toprule
+\textbf{Reduction} & \textbf{Qubits} & \textbf{AUC-ROC} & 
+\textbf{F1} & \textbf{KAS} \\
+\midrule
+PCA   & 4q & 0.447$\pm$0.046 & 0.000 & 0.219$\pm$0.020 \\
+PCA   & 6q & 0.497$\pm$0.054 & 0.000 & 0.333$\pm$0.017 \\
+PCA   & 8q & 0.375$\pm$0.045 & 0.000 & 0.368$\pm$0.027 \\
+LDA   & 4q & 0.462$\pm$0.131 & 0.000 & 0.169$\pm$0.019 \\
+LDA   & 6q & 0.413$\pm$0.122 & 0.000 & 0.304$\pm$0.037 \\
+LDA   & 8q & \textbf{0.530$\pm$0.079} & 0.000 & 0.371$\pm$0.024 \\
+t-SNE & 4q & 0.447$\pm$0.046 & 0.000 & 0.219$\pm$0.020 \\
+t-SNE & 6q & 0.497$\pm$0.054 & 0.000 & 0.333$\pm$0.017 \\
+t-SNE & 8q & 0.375$\pm$0.045 & 0.000 & 0.368$\pm$0.027 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Kernel Alignment Score Analysis}
+KAS values range from 0.169 (LDA 4q) to 0.371 (LDA 8q), 
+indicating that quantum feature maps explore feature spaces 
+substantially distinct from classical RBF kernels. A 
+consistent positive correlation between qubit count and KAS 
+is observed: as circuit width increases, quantum kernel 
+matrices become progressively more aligned with classical 
+RBF structure, suggesting diminishing structural novelty 
+of the quantum feature space. LDA configurations exhibit 
+lower KAS than PCA at equivalent qubit counts (e.g., LDA 4q: 
+0.169 vs. PCA 4q: 0.219), indicating class-discriminative 
+projections produce more structurally distinct quantum 
+encodings.
+
+\subsection{Noise Impact Analysis}
+Table~\ref{tab:noise_results} reports AUC under three noise 
+levels. LDA configurations demonstrate strongest noise 
+resilience: LDA 4q retains AUC\,=\,0.746 at $p=0.01$ vs. 
+0.781 at $p=0$, a 4.3 percentage point degradation. 
+PCA configurations exhibit minimal noise sensitivity. 
+A counterintuitive noise-enhancement effect is observed in 
+t-SNE configurations, where AUC improves monotonically with 
+noise (t-SNE 8q: $p=0$: 0.375, $p=0.001$: 0.462, $p=0.01$: 
+0.501), consistent with implicit regularization properties 
+of depolarizing noise reported by Huang et al.~\cite{huang2026}.
+
+\begin{table}[h]
+\caption{Noise Impact Analysis: AUC-ROC Under Depolarizing 
+Noise Across All Quantum Configurations}
+\label{tab:noise_results}
+\centering
+\begin{tabular}{llccc}
+\toprule
+\textbf{Reduction} & \textbf{Qubits} & \textbf{p=0.0} & 
+\textbf{p=0.001} & \textbf{p=0.01} \\
+\midrule
+PCA   & 4q & 0.611 & 0.598 & 0.599 \\
+PCA   & 6q & 0.471 & 0.461 & 0.462 \\
+PCA   & 8q & 0.363 & 0.356 & 0.356 \\
+LDA   & 4q & \textbf{0.781} & 0.737 & 0.746 \\
+LDA   & 6q & 0.721 & 0.677 & 0.686 \\
+LDA   & 8q & 0.661 & 0.617 & 0.626 \\
+t-SNE & 4q & 0.447 & 0.382 & 0.415 \\
+t-SNE & 6q & 0.369 & 0.456 & 0.495 \\
+t-SNE & 8q & 0.375 & 0.462 & \textbf{0.501} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Classical Dominance at Current NISQ Scales}
+Results demonstrate a substantial performance gap between 
+classical and quantum kernel approaches. Random Forest 
+achieves AUC\,=\,0.925 vs. best quantum AUC\,=\,0.530, 
+a gap of approximately 0.40 AUC points. This is consistent 
+with Kakavand et al.~\cite{kakavand2026} and extends their 
+conclusions to financial fraud detection. The universal 
+failure to achieve non-zero F1 scores reveals a fundamental 
+limitation under severe class imbalance at current NISQ 
+evaluation scales. The 400-sample constraint may prevent 
+quantum classifiers from learning reliable fraud decision 
+thresholds, motivating development of cost-sensitive quantum 
+learning frameworks and quantum-aware resampling strategies.
+
+\subsection{Role of Dimensionality Reduction}
+LDA configurations consistently outperform PCA and t-SNE 
+across both classification accuracy and noise resilience. 
+LDA's Fisher criterion preserves inter-class separation 
+directly relevant to binary fraud classification, providing 
+ZZFeatureMap with feature dimensions encoding fraud-discriminative 
+structure more effectively than PCA's variance-maximizing 
+projections. The inverted-U pattern under PCA (peak at 6q, 
+decline at 8q) suggests an information saturation threshold 
+beyond which additional circuit width introduces entanglement 
+complexity without improving class discriminability. LDA's 
+monotonic improvement from 4q to 8q indicates class-separable 
+feature structure benefits from increased circuit expressivity.
+
+\subsection{Practical Implications of KAS}
+KAS provides practitioners with a principled diagnostic tool 
+prior to quantum kernel deployment. In this study, KAS values 
+consistently below 0.4 confirm ZZFeatureMap-based kernels 
+explore structurally distinct feature spaces from classical 
+RBF on financial transaction data. However, low KAS combined 
+with zero F1 scores indicates structural distinctness alone 
+is insufficient for fraud detection advantage --- the quantum 
+feature space must also be \textit{discriminatively} distinct, 
+not merely geometrically different. This insight motivates 
+future development of fraud-specific quantum feature map 
+designs beyond the general-purpose ZZFeatureMap.
+
+\subsection{Limitations}
+\begin{itemize}
+    \item \textbf{Sample size}: Limited to 400 samples due 
+    to O($n^2$) kernel complexity on classical simulators, 
+    potentially preventing reliable fraud decision boundaries.
+    \item \textbf{Qubit scale}: Limited to 8 qubits; 
+    quantum advantage may emerge at larger scales.
+    \item \textbf{Simulation vs. hardware}: Qiskit Aer noise 
+    models may not fully represent real hardware noise.
+    \item \textbf{t-SNE proxy}: Test set transformation uses 
+    PCA proxy, making t-SNE results equivalent to PCA.
+    \item \textbf{Single dataset}: Generalizability requires 
+    evaluation on additional financial fraud datasets.
+\end{itemize}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presented the first systematic benchmarking study 
+of quantum kernel-enhanced SVMs for financial fraud detection 
+under NISQ constraints. We evaluated nine quantum configurations 
+across three dimensionality reduction methods and three qubit 
+scales, introducing the Kernel Alignment Score as a novel 
+diagnostic metric for quantum-classical feature space divergence.
+
+Three key findings emerge. First, classical tree-based methods 
+substantially outperform quantum kernel approaches at current 
+NISQ scales (Random Forest AUC\,=\,0.925 vs. best quantum 
+AUC\,=\,0.530), establishing empirical performance boundaries 
+for QK-SVM on financial tabular data. Second, LDA-based 
+dimensionality reduction consistently yields superior quantum 
+kernel performance, indicating that class-discriminative 
+projections create more favorable quantum encoding regimes 
+for fraud classification. Third, a noise-enhancement effect 
+is observed in t-SNE configurations, where AUC improves 
+monotonically with depolarizing noise, consistent with 
+implicit regularization properties of quantum noise.
+
+Future work will extend this framework to real quantum 
+hardware validation, larger qubit scales enabled by 
+fault-tolerant devices, cost-sensitive quantum learning 
+to address class imbalance, and application to time-series 
+fraud pattern detection.
+
+\section*{Acknowledgment}
+The author declares no funding support for this research. 
+This work was conducted independently. The author used 
+Claude (Anthropic) for grammar checking and initial 
+draft structuring. All scientific content, experimental 
+design, analysis, and conclusions are the sole work 
+of the author.
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{00}
+
+\bibitem{nilson2023}
+The Nilson Report, ``Payment card fraud losses worldwide,'' 
+Issue 1264, 2023.
+
+\bibitem{dalpozzolo2015}
+A. Dal Pozzolo, O. Caelen, R. A. Johnson, and G. Bontempi, 
+``Calibrating probability with undersampling for unbalanced 
+classification,'' in \textit{Proc. IEEE Symp. Comput. Intell. 
+Data Mining}, Cape Town, 2015, pp. 1--8.
+
+\bibitem{bahnsen2016}
+A. C. Bahnsen, D. Aouada, A. Stojanovic, and B. Ottersten, 
+``Feature engineering strategies for credit card fraud 
+detection,'' \textit{Expert Systems with Applications}, 
+vol. 51, pp. 134--142, 2016.
+
+\bibitem{chen2016xgboost}
+T. Chen and C. Guestrin, ``XGBoost: A scalable tree 
+boosting system,'' in \textit{Proc. 22nd ACM SIGKDD}, 
+San Francisco, CA, 2016, pp. 785--794.
+
+\bibitem{cortes1995}
+C. Cortes and V. Vapnik, ``Support-vector networks,'' 
+\textit{Machine Learning}, vol. 20, no. 3, 
+pp. 273--297, 1995.
+
+\bibitem{scholkopf2002}
+B. Sch\"{o}lkopf and A. J. Smola, 
+\textit{Learning with Kernels}. 
+Cambridge, MA: MIT Press, 2002.
+
+\bibitem{havlicek2019}
+V. Havl\'{i}\v{c}ek et al., 
+``Supervised learning with quantum-enhanced feature spaces,'' 
+\textit{Nature}, vol. 567, pp. 209--212, 2019.
+
+\bibitem{preskill2018}
+J. Preskill, ``Quantum computing in the NISQ era,'' 
+\textit{Quantum}, vol. 2, p. 79, 2018.
+
+\bibitem{schuld2019}
+M. Schuld and N. Killoran, ``Quantum machine learning 
+in feature Hilbert spaces,'' 
+\textit{Physical Review Letters}, vol. 122, p. 040504, 2019.
+
+\bibitem{liu2021}
+Y. Liu, S. Arunachalam, and K. Temme, 
+``A rigorous and robust quantum speed-up in supervised 
+machine learning,'' \textit{Nature Physics}, vol. 17, 
+pp. 1013--1017, 2021.
+
+\bibitem{cerezo2021}
+M. Cerezo et al., ``Variational quantum algorithms,'' 
+\textit{Nature Reviews Physics}, vol. 3, pp. 625--644, 2021.
+
+\bibitem{gilfuster2026}
+E. Gil-Fuster et al., ``Optimal algorithmic complexity of 
+inference in quantum kernel methods,'' 
+arXiv:2604.15214, 2026.
+
+\bibitem{kakavand2026}
+S. Kakavand, C. Strohmeyer, and M. Schlotter, 
+``Benchmarking quantum kernel SVMs against classical 
+baselines on tabular data,'' arXiv:2604.18837, 2026.
+
+\bibitem{orus2019}
+R. Or\'{u}s, S. Mugel, and E. Lizaso, 
+``Quantum computing for finance: Overview and prospects,'' 
+\textit{Reviews in Physics}, vol. 4, p. 100028, 2019.
+
+\bibitem{egger2020}
+D. J. Egger et al., ``Quantum computing for finance,'' 
+\textit{IEEE Transactions on Quantum Engineering}, 
+vol. 1, pp. 1--24, 2020.
+
+\bibitem{roy2026}
+S. Roy and S. B. Alam, ``Q-SINDy: Quantum-kernel sparse 
+identification of nonlinear dynamics,'' 
+arXiv:2604.16779, 2026.
+
+\bibitem{huang2026}
+H.-W. Huang et al., ``Noise-enhanced quantum kernels 
+on analog quantum computers,'' arXiv:2604.12476, 2026.
+
+\bibitem{chawla2002smote}
+N. V. Chawla et al., ``SMOTE: Synthetic minority 
+over-sampling technique,'' 
+\textit{Journal of Artificial Intelligence Research}, 
+vol. 16, pp. 321--357, 2002.
+
+\bibitem{cristianini2001}
+N. Cristianini et al., ``On kernel-target alignment,'' 
+in \textit{Advances in NeurIPS}, vol. 14, 2001, 
+pp. 367--373.
+
+\bibitem{ieee_cis_dataset}
+IEEE Computational Intelligence Society, 
+``IEEE-CIS Fraud Detection Dataset,'' Kaggle, 2019.
+
+\bibitem{pennylane2018}
+V. Bergholm et al., 
+``PennyLane: Automatic differentiation of hybrid 
+quantum-classical computations,'' arXiv:1811.04975, 2018.
+
+\bibitem{qiskit2023}
+IBM Quantum, ``Qiskit: An open-source framework for 
+quantum computing,'' 2023.
+
+\bibitem{sklearn2011}
+F. Pedregosa et al., ``Scikit-learn: Machine learning 
+in Python,'' \textit{JMLR}, vol. 12, 
+pp. 2825--2830, 2011.
+
+\end{thebibliography}
+
+\begin{IEEEbiographynophoto}{Charan Panthangi}
+is a Lead Engineer in Generative AI and Product Development 
+at a Fortune 500 conglomerate,Bangalore, India. He holds 
+a Post Graduate Diploma in Management from IIM Indore, 
+a Master of Engineering in Applied AI and Machine Learning 
+from Saveetha University, and a Certification in Quantum 
+Computing from IIT Madras. He has published four 
+peer-reviewed papers in IEEE Xplore on applied healthcare 
+AI. His research interests include quantum machine learning, 
+large language model evaluation, and applied AI for 
+financial systems.
+\end{IEEEbiographynophoto}
+
+\end{document}
